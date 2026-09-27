@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hasta Takip Sistemi</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🌿 Hasta Takip & Ses Kayıt</h1>
+        
+        <form action="/" method="GET" class="search-form">
+            <input type="text" name="search" placeholder="İsim veya telefon ara...">
+            <button type="submit" style="background: #3498db; color: white;">Ara</button>
+            <a href="/" style="text-decoration: none; padding: 10px; background: #bdc3c7; color: white; border-radius: 8px; font-size: 13px;">Sıfırla</a>
+        </form>
+
+        <hr>
+
+        <div class="add-section">
+            <h2>Yeni Hasta Kaydı</h2>
+            <form id="hastaForm" action="/ekle" method="POST" enctype="multipart/form-data" class="add-form">
+                <div style="display: flex; gap: 10px;">
+                    <input type="text" name="ad" placeholder="Ad Soyad" required>
+                    <input type="text" name="telefon" placeholder="Telefon" required>
+                </div>
+                <textarea name="hikaye" placeholder="Hasta Hikayesi"></textarea>
+                <textarea name="remediler" placeholder="Verilen Remediler"></textarea>
+                
+                <input type="file" name="ses_verisi" id="sesInput" style="display: none;">
+                
+                <div class="audio-controls" style="background: #f9f9f9; padding: 15px; border-radius: 10px; border: 1px dashed #ccc; margin: 10px 0;">
+                    <button type="button" id="startBtn" style="background: #e74c3c; color: white;">🔴 Kaydı Başlat</button>
+                    <button type="button" id="stopBtn" disabled style="background: #2c3e50; color: white;">⏹ Durdur</button>
+                    <span id="status" style="margin-left: 10px; font-weight: bold;">Hazır</span>
+                </div>
+                
+                <button type="submit" style="width: 100%; background: #27ae60; color: white; font-size: 18px; padding: 12px; cursor: pointer;">💾 Hastayı Kaydet</button>
+            </form>
+        </div>
+
+        <hr>
+
+        <h2>Kayıtlı Hastalar</h2>
+        <div class="hastalar-listesi">
+            {% for hasta in hastalar %}
+            <div class="hasta-kart" style="border: 1px solid #ddd; padding: 15px; margin-bottom: 20px; border-radius: 10px; background: white;">
+                <div style="display: flex; justify-content: space-between;">
+                    <h3 style="margin: 0; color: #2c3e50;">{{ hasta.ad }}</h3>
+                    <span style="color: #7f8c8d; font-weight: bold;">📞 {{ hasta.telefon }}</span>
+                </div>
+                
+                <form action="/duzenle/{{ hasta.id }}" method="POST">
+                    <label style="display:block; margin-top:10px; font-weight: bold;">Hikaye:</label>
+                    <textarea name="hikaye" style="width:100%; height:80px; border: 1px solid #eee; border-radius: 5px;">{{ hasta.hikaye }}</textarea>
+                    
+                    <label style="display:block; margin-top:10px; font-weight: bold;">Remediler:</label>
+                    <textarea name="remediler" style="width:100%; height:80px; border: 1px solid #eee; border-radius: 5px;">{{ hasta.remediler }}</textarea>
+                    
+                    {% if hasta.ses_dosyasi %}
+                    <div style="margin-top: 15px; background: #f0f4f8; padding: 12px; border-radius: 8px; border: 1px solid #d1d8e0;">
+                        <label style="display:block; margin-bottom:8px; color: #2c3e50; font-weight: bold;">🔊 Kayıtlı Görüşme:</label>
+                        <audio controls style="width: 100%;">
+                            <source src="{{ url_for('static', filename='kayitlar/' + hasta.ses_dosyasi) }}" type="audio/webm">
+                            Tarayıcınız bu sesi desteklemiyor.
+                        </audio>
+                        
+                        <div style="margin-top: 10px; text-align: right;">
+                            <a href="{{ url_for('static', filename='kayitlar/' + hasta.ses_dosyasi) }}" 
+                               download="{{ hasta.ad }}_{{ hasta.telefon }}_kayit.webm" 
+                               style="text-decoration: none; background: #2c3e50; color: white; padding: 6px 15px; border-radius: 6px; font-size: 13px; display: inline-block; transition: 0.3s;">
+                               📥 Kaydı Bilgisayara İndir
+                            </a>
+                        </div>
+                    </div>
+                    {% endif %}
+                    
+                    <button type="submit" style="margin-top: 15px; width: 100%; background: #3498db; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: bold;">Bilgileri Güncelle</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <script>
+        let mediaRecorder;
+        let chunks = [];
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const status = document.getElementById('status');
+        const sesInput = document.getElementById('sesInput');
+
+        startBtn.onclick = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const mimeType = MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4';
+                mediaRecorder = new MediaRecorder(stream, { mimeType });
+                chunks = [];
+
+                mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+                
+                mediaRecorder.onstop = () => {
+                    const blob = new Blob(chunks, { type: mimeType });
+                    const file = new File([blob], "kayit.webm", { type: mimeType });
+                    const container = new DataTransfer();
+                    container.items.add(file);
+                    sesInput.files = container.files;
+                    
+                    status.innerText = "✅ Kayıt Hazır! (" + (blob.size / 1024).toFixed(1) + " KB)";
+                    status.style.color = "#27ae60";
+                    stream.getTracks().forEach(track => track.stop());
+                };
+
+                mediaRecorder.start();
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                status.innerText = "🎤 Kaydediliyor...";
+                status.style.color = "#e74c3c";
+            } catch (err) {
+                status.innerText = "❌ Mikrofon Hatası!";
+                status.style.color = "red";
+            }
+        };
+
+        stopBtn.onclick = () => {
+            if (mediaRecorder && mediaRecorder.state !== "inactive") {
+                mediaRecorder.stop();
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+            }
+        };
+    </script>
+</body>
+</html>
